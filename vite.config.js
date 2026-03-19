@@ -13,7 +13,7 @@ export default defineConfig({
   server: {
     host: true, // allow external access
     allowedHosts: [
-      "ba3f-182-191-84-10.ngrok-free.app", // your ngrok URL
+      "outlaw-golf-game-contract-testing.vercel.app", // your ngrok URL
     ],
   },
 
