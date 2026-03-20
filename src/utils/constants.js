@@ -27,6 +27,8 @@ export const WagerStatus = {
 };
 
 export const TOKEN_DECIMALS = requiredEnv("VITE_OUTLAW_TOKEN_DECIMALS");
+export const TOKEN_DECIMALS_NUM = Number(TOKEN_DECIMALS);
+export const TOKEN_DECIMAL_FACTOR = 10 ** TOKEN_DECIMALS_NUM;
 export const TRANSACTION_COOLDOWN = requiredEnv("VITE_TX_COOLDOWN"); // ms
 
 export const TOAST_CONFIG = {

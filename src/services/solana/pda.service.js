@@ -16,7 +16,6 @@ export const findGlobalStatePda = () => {
 
 // Wager PDA uses a BN/wager id buffer — caller must provide wagerBn.toArrayLike(Buffer, 'le', 8)
 export const findWagerPdaFromBuffer = ({ wagerSeedBuffer }) => {
-  console.log([Buffer.from(WAGER_SEED), wagerSeedBuffer])
   return PublicKey.findProgramAddressSync(
     [Buffer.from(WAGER_SEED), wagerSeedBuffer],
     GOLF_PROGRAM_PUBLICKEY

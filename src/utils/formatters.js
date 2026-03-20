@@ -1,11 +1,17 @@
-import { TOKEN_DECIMALS } from "./constants";
+import { TOKEN_DECIMALS_NUM } from "./constants";
 
-export const formatTokenAmount = (lamports, decimals = TOKEN_DECIMALS) => {
-  return (lamports / Math.pow(10, decimals)).toFixed(decimals);
+export const formatTokenAmount = (
+  rawAmount,
+  decimals = TOKEN_DECIMALS_NUM,
+) => {
+  return (rawAmount / 10 ** decimals).toFixed(Math.min(decimals, 9));
 };
 
-export const parseTokenAmount = (amount, decimals = TOKEN_DECIMALS) => {
-  return Math.floor(parseFloat(amount) * Math.pow(10, decimals));
+export const parseTokenAmount = (
+  amount,
+  decimals = TOKEN_DECIMALS_NUM,
+) => {
+  return Math.floor(parseFloat(amount) * 10 ** decimals);
 };
 
 export const formatPublicKey = (publicKey, startChars = 4, endChars = 4) => {
@@ -14,8 +20,13 @@ export const formatPublicKey = (publicKey, startChars = 4, endChars = 4) => {
 };
 
 export const formatTimestamp = (timestamp) => {
-  if (!timestamp) return "N/A";
-  return new Date(timestamp * 1000).toLocaleString();
+  if (timestamp == null) return "N/A";
+  const sec =
+    typeof timestamp?.toNumber === "function"
+      ? timestamp.toNumber()
+      : Number(timestamp);
+  if (!Number.isFinite(sec)) return "N/A";
+  return new Date(sec * 1000).toLocaleString();
 };
 
 export const formatBpsToPercentage = (bps) => {

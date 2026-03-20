@@ -1,6 +1,6 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import * as anchor from "@coral-xyz/anchor";
-import { PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
+import { PublicKey, SystemProgram } from "@solana/web3.js";
 import {
   getAssociatedTokenAddress,
   createAssociatedTokenAccountInstruction,
@@ -14,29 +14,10 @@ import {
   findTrackerPda,
 } from "../services/solana/pda.service";
 import { OUTLAW_TOKEN_PUBLICKEY } from "../utils/constants";
+import { sendAndConfirm } from "../services/solana/transaction.service";
 
 export default function useWager(wallet, connection, refreshGlobalState) {
   const [loading, setLoading] = useState(false);
-
-  // ------------------------------------------------------------
-  // Generic (multi-instruction) transaction runner
-  // ------------------------------------------------------------
-  const runTx = useCallback(
-    async (tx) => {
-      const sig = await wallet.sendTransaction(tx, connection);
-
-      const { blockhash, lastValidBlockHeight } =
-        await connection.getLatestBlockhash("finalized");
-
-      await connection.confirmTransaction(
-        { signature: sig, blockhash, lastValidBlockHeight },
-        "confirmed"
-      );
-
-      return sig;
-    },
-    [wallet, connection]
-  );
 
   // ------------------------------------------------------------
   // Fetch a wager by BN
@@ -62,48 +43,50 @@ export default function useWager(wallet, connection, refreshGlobalState) {
         setLoading(false);
       }
     },
-    [connection, wallet]
+    [connection, wallet],
   );
 
-  // // ------------------------------------------------------------
-  // // Fetch active wagers for connected wallet
-  // // ------------------------------------------------------------
-  // const fetchActiveWagersForWallet = useCallback(
-  //   async () => {
-  //     if (!wallet.publicKey) throw new Error("Wallet not connected");
-  //     setLoading(true);
+  // ------------------------------------------------------------
+  // Fetch active wagers for connected wallet
+  // Note: account.wager.all() loads every wager account; for large deployments
+  // prefer getProgramAccounts with memcmp filters on player fields.
+  // ------------------------------------------------------------
+  const fetchActiveWagersForWallet = useCallback(
+    async () => {
+      if (!wallet.publicKey) throw new Error("Wallet not connected");
+      setLoading(true);
 
-  //     try {
-  //       const program = await initializeOutlawGolfProgram({
-  //         connection,
-  //         wallet,
-  //       });
+      try {
+        const program = await initializeOutlawGolfProgram({
+          connection,
+          wallet,
+        });
 
-  //       const allWagers = await program.account.wager.all();
+        const allWagers = await program.account.wager.all();
 
-  //       const active = allWagers.filter(({ account }) => {
-  //         const isPlayer =
-  //           account.player1?.equals(wallet.publicKey) ||
-  //           (account.player2 && account.player2.equals(wallet.publicKey));
+        const active = allWagers.filter(({ account }) => {
+          const isPlayer =
+            account.player1?.equals(wallet.publicKey) ||
+            (account.player2 && account.player2.equals(wallet.publicKey));
 
-  //         const isActive =
-  //           account.status &&
-  //           !account.status.cancelled &&
-  //           !account.status.resolved;
+          const isActive =
+            account.status &&
+            !account.status.cancelled &&
+            !account.status.resolved;
 
-  //         return isPlayer && isActive;
-  //       });
+          return isPlayer && isActive;
+        });
 
-  //       return active; // array of { publicKey, account }
-  //     } catch (error) {
-  //       console.error("error fetching active wagers for wallet", error);
-  //       throw error;
-  //     } finally {
-  //       setLoading(false);
-  //     }
-  //   },
-  //   [connection, wallet]
-  // );
+        return active; // array of { publicKey, account }
+      } catch (error) {
+        console.error("error fetching active wagers for wallet", error);
+        throw error;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [connection, wallet]
+  );
 
   // ------------------------------------------------------------
   // Create Wager
@@ -131,14 +114,14 @@ export default function useWager(wallet, connection, refreshGlobalState) {
         // ensure player's ATA
         const playerTokenAccount = await getAssociatedTokenAddress(
           OUTLAW_TOKEN_PUBLICKEY,
-          wallet.publicKey
+          wallet.publicKey,
         );
 
         // escrow vault for wager PDA
         const escrowVault = await getAssociatedTokenAddress(
           OUTLAW_TOKEN_PUBLICKEY,
           wagerPda,
-          true
+          true,
         );
 
         const ix = await program.methods
@@ -158,22 +141,14 @@ export default function useWager(wallet, connection, refreshGlobalState) {
           })
           .instruction();
 
-        const { blockhash, lastValidBlockHeight } =
-          await connection.getLatestBlockhash("finalized");
-
-        const tx = new Transaction({
-          recentBlockhash: blockhash,
-          feePayer: wallet.publicKey,
-        }).add(ix);
-
-        const sig = await runTx(tx);
+        const sig = await sendAndConfirm(wallet, connection, ix);
         await refreshGlobalState?.();
         return sig;
       } finally {
         setLoading(false);
       }
     },
-    [wallet, connection, runTx, refreshGlobalState]
+    [wallet, connection, refreshGlobalState],
   );
 
   // ------------------------------------------------------------
@@ -200,7 +175,6 @@ export default function useWager(wallet, connection, refreshGlobalState) {
         if (!info) throw new Error("Wager does not exist");
 
         const wager = await program.account.wager.fetch(wagerPda);
-        console.log("wager", wager);
 
         if (wager.player1.equals(wallet.publicKey))
           throw new Error("Cannot join your own wager");
@@ -210,24 +184,17 @@ export default function useWager(wallet, connection, refreshGlobalState) {
         // ATAs
         const player2TokenAccount = await getAssociatedTokenAddress(
           OUTLAW_TOKEN_PUBLICKEY,
-          wallet.publicKey
+          wallet.publicKey,
         );
         const player1TokenAccount = await getAssociatedTokenAddress(
           OUTLAW_TOKEN_PUBLICKEY,
-          wager.player1
+          wager.player1,
         );
         const escrowVault = await getAssociatedTokenAddress(
           OUTLAW_TOKEN_PUBLICKEY,
           wagerPda,
-          true
+          true,
         );
-
-        console.log({
-          wagerPda: wagerPda.toString(),
-          player2TokenAccount: player2TokenAccount.toString(),
-          player1TokenAccount: player1TokenAccount.toString(),
-          escrowVault: escrowVault.toString()
-        })
 
         const ix = await program.methods
           .joinWager(wagerBn)
@@ -245,22 +212,14 @@ export default function useWager(wallet, connection, refreshGlobalState) {
           })
           .instruction();
 
-        const { blockhash, lastValidBlockHeight } =
-          await connection.getLatestBlockhash("finalized");
-
-        const tx = new Transaction({
-          recentBlockhash: blockhash,
-          feePayer: wallet.publicKey,
-        }).add(ix);
-
-        const sig = await runTx(tx);
+        const sig = await sendAndConfirm(wallet, connection, ix);
         await refreshGlobalState?.();
         return sig;
       } finally {
         setLoading(false);
       }
     },
-    [wallet, connection, runTx, refreshGlobalState]
+    [wallet, connection, refreshGlobalState],
   );
 
   // ------------------------------------------------------------
@@ -300,12 +259,12 @@ export default function useWager(wallet, connection, refreshGlobalState) {
 
         const playerTokenAccount = await getAssociatedTokenAddress(
           OUTLAW_TOKEN_PUBLICKEY,
-          wallet.publicKey
+          wallet.publicKey,
         );
         const escrowVault = await getAssociatedTokenAddress(
           OUTLAW_TOKEN_PUBLICKEY,
           wagerPda,
-          true
+          true,
         );
 
         const ix = await program.methods
@@ -322,22 +281,14 @@ export default function useWager(wallet, connection, refreshGlobalState) {
           })
           .instruction();
 
-        const { blockhash, lastValidBlockHeight } =
-          await connection.getLatestBlockhash("finalized");
-
-        const tx = new Transaction({
-          recentBlockhash: blockhash,
-          feePayer: wallet.publicKey,
-        }).add(ix);
-
-        const sig = await runTx(tx);
+        const sig = await sendAndConfirm(wallet, connection, ix);
         await refreshGlobalState?.();
         return sig;
       } finally {
         setLoading(false);
       }
     },
-    [wallet, connection, runTx, refreshGlobalState]
+    [wallet, connection, refreshGlobalState],
   );
 
   // ------------------------------------------------------------
@@ -355,9 +306,8 @@ export default function useWager(wallet, connection, refreshGlobalState) {
         });
 
         const [globalStatePda] = findGlobalStatePda();
-        const globalState = await program.account.globalState.fetch(
-          globalStatePda
-        );
+        const globalState =
+          await program.account.globalState.fetch(globalStatePda);
 
         if (!globalState.resolver.equals(wallet.publicKey))
           throw new Error("Only resolver may settle wagers");
@@ -376,31 +326,33 @@ export default function useWager(wallet, connection, refreshGlobalState) {
         // ATAs
         const player1TokenAccount = await getAssociatedTokenAddress(
           OUTLAW_TOKEN_PUBLICKEY,
-          wager.player1
+          wager.player1,
         );
         const player2TokenAccount = await getAssociatedTokenAddress(
           OUTLAW_TOKEN_PUBLICKEY,
-          wager.player2
+          wager.player2,
         );
         const escrowVault = await getAssociatedTokenAddress(
           OUTLAW_TOKEN_PUBLICKEY,
           wagerPda,
-          true
+          true,
         );
 
-        const INCINERATOR_ADDRESS = '1nc1nerator11111111111111111111111111111111';
-        const burnIsIncinerator = globalState.burnVault.toString() === INCINERATOR_ADDRESS;
+        const INCINERATOR_ADDRESS =
+          "1nc1nerator11111111111111111111111111111111";
+        const burnIsIncinerator =
+          globalState.burnVault.toString() === INCINERATOR_ADDRESS;
         const burnVaultTokenAccount = await getAssociatedTokenAddress(
           OUTLAW_TOKEN_PUBLICKEY,
           globalState.burnVault,
-          burnIsIncinerator
+          burnIsIncinerator,
         );
 
         let referralTokenAccount = burnVaultTokenAccount;
         if (referralPubkey) {
           const ata = await getAssociatedTokenAddress(
             OUTLAW_TOKEN_PUBLICKEY,
-            referralPubkey
+            referralPubkey,
           );
           const exists = await connection.getAccountInfo(ata);
 
@@ -409,15 +361,11 @@ export default function useWager(wallet, connection, refreshGlobalState) {
               wallet.publicKey,
               ata,
               referralPubkey,
-              OUTLAW_TOKEN_PUBLICKEY
+              OUTLAW_TOKEN_PUBLICKEY,
             );
             referralTokenAccount = ata;
 
-            const tx = new Transaction({
-              feePayer: wallet.publicKey,
-            }).add(createIx);
-
-            await runTx(tx);
+            await sendAndConfirm(wallet, connection, createIx);
           } else {
             referralTokenAccount = ata;
           }
@@ -442,34 +390,37 @@ export default function useWager(wallet, connection, refreshGlobalState) {
           })
           .instruction();
 
-        const { blockhash, lastValidBlockHeight } =
-          await connection.getLatestBlockhash("finalized");
-
-        const tx = new Transaction({
-          recentBlockhash: blockhash,
-          feePayer: wallet.publicKey,
-        }).add(ix);
-
-        const sig = await runTx(tx);
+        const sig = await sendAndConfirm(wallet, connection, ix);
         await refreshGlobalState?.();
         return sig;
       } finally {
         setLoading(false);
       }
     },
-    [wallet, connection, runTx, refreshGlobalState]
+    [wallet, connection, refreshGlobalState],
   );
 
   // ------------------------------------------------------------
   // Export API
   // ------------------------------------------------------------
-  return {
-    loading,
-    fetchWager,
-    // fetchActiveWagersForWallet,
-    createWager,
-    joinWager,
-    cancelWager,
-    settleWager,
-  };
+  return useMemo(
+    () => ({
+      loading,
+      fetchWager,
+      fetchActiveWagersForWallet,
+      createWager,
+      joinWager,
+      cancelWager,
+      settleWager,
+    }),
+    [
+      loading,
+      fetchWager,
+      fetchActiveWagersForWallet,
+      createWager,
+      joinWager,
+      cancelWager,
+      settleWager,
+    ],
+  );
 }

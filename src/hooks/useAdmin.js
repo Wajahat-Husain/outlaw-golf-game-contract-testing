@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { initializeOutlawGolfProgram } from "../utils/anchorProgram";
 import {
   findGlobalStatePda,
@@ -6,7 +6,7 @@ import {
   findTrackerPda,
 } from "../services/solana/pda.service";
 import { OUTLAW_TOKEN_PUBLICKEY } from "../utils/constants";
-import { Transaction } from "@solana/web3.js";
+import { sendAndConfirm } from "../services/solana/transaction.service";
 import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { getOrCreateAta } from "../services/solana/token.service";
 import * as anchor from "@coral-xyz/anchor";
@@ -14,36 +14,6 @@ import { PublicKey } from "@solana/web3.js";
 
 export default function useAdmin(wallet, connection, refreshGlobalState) {
   const [loading, setLoading] = useState(false);
-
-  // ------------------------------------------------------------
-  // Generic TX executor (single instruction)
-  // ---------------------------------------------------------
-  const runTx = useCallback(
-    async (instruction) => {
-      try {
-        if (!connection) throw new Error("Connection not available");
-        const { blockhash, lastValidBlockHeight } =
-          // await connection.getLatestBlockhash("finalized"); // development environment
-          await connection.getLatestBlockhash("confirmed"); // production environment
-
-        const tx = new Transaction({
-          recentBlockhash: blockhash,
-          feePayer: wallet.publicKey,
-        }).add(instruction);
-
-        const sig = await wallet.sendTransaction(tx, connection);
-        await connection.confirmTransaction(
-          { signature: sig, blockhash, lastValidBlockHeight },
-          "confirmed"
-        );
-        return sig;
-      } catch (error) {
-        console.error("Transaction failed:", error);
-        throw error;
-      }
-    },
-    [wallet, connection]
-  );
 
   // ------------------------------------------------------------
   // Toggle Pause / Unpause
@@ -72,13 +42,13 @@ export default function useAdmin(wallet, connection, refreshGlobalState) {
         })
         .instruction();
 
-      const sig = await runTx(ix);
+      const sig = await sendAndConfirm(wallet, connection, ix);
       await refreshGlobalState?.();
       return sig;
     } finally {
       setLoading(false);
     }
-  }, [wallet, connection, runTx, refreshGlobalState]);
+  }, [wallet, connection, refreshGlobalState]);
 
   // ------------------------------------------------------------
   // Fetch Wager (Admin Side)
@@ -129,14 +99,14 @@ export default function useAdmin(wallet, connection, refreshGlobalState) {
           })
           .instruction();
 
-        const sig = await runTx(ix);
+        const sig = await sendAndConfirm(wallet, connection, ix);
         await refreshGlobalState?.();
         return sig;
       } finally {
         setLoading(false);
       }
     },
-    [wallet, connection, runTx, refreshGlobalState]
+    [wallet, connection, refreshGlobalState]
   );
 
   // ------------------------------------------------------------
@@ -162,14 +132,14 @@ export default function useAdmin(wallet, connection, refreshGlobalState) {
           })
           .instruction();
 
-        const sig = await runTx(ix);
+        const sig = await sendAndConfirm(wallet, connection, ix);
         await refreshGlobalState?.();
         return sig;
       } finally {
         setLoading(false);
       }
     },
-    [wallet, connection, refreshGlobalState, runTx]
+    [wallet, connection, refreshGlobalState]
   );
 
   // ------------------------------------------------------------
@@ -196,14 +166,14 @@ export default function useAdmin(wallet, connection, refreshGlobalState) {
           })
           .instruction();
 
-        const sig = await runTx(ix);
+        const sig = await sendAndConfirm(wallet, connection, ix);
         await refreshGlobalState?.();
         return sig;
       } finally {
         setLoading(false);
       }
     },
-    [wallet, connection, refreshGlobalState, runTx]
+    [wallet, connection, refreshGlobalState]
   );
 
   // ------------------------------------------------------------
@@ -230,14 +200,14 @@ export default function useAdmin(wallet, connection, refreshGlobalState) {
           })
           .instruction();
 
-        const sig = await runTx(ix);
+        const sig = await sendAndConfirm(wallet, connection, ix);
         await refreshGlobalState?.();
         return sig;
       } finally {
         setLoading(false);
       }
     },
-    [wallet, connection, refreshGlobalState, runTx]
+    [wallet, connection, refreshGlobalState]
   );
 
   // ------------------------------------------------------------
@@ -263,14 +233,14 @@ export default function useAdmin(wallet, connection, refreshGlobalState) {
           })
           .instruction();
 
-        const sig = await runTx(ix);
+        const sig = await sendAndConfirm(wallet, connection, ix);
         await refreshGlobalState?.();
         return sig;
       } finally {
         setLoading(false);
       }
     },
-    [wallet, connection, refreshGlobalState, runTx]
+    [wallet, connection, refreshGlobalState]
   );
 
   // ------------------------------------------------------------
@@ -335,28 +305,41 @@ export default function useAdmin(wallet, connection, refreshGlobalState) {
           })
           .instruction();
 
-        const sig = await runTx(ix);
+        const sig = await sendAndConfirm(wallet, connection, ix);
         await refreshGlobalState?.();
         return sig;
       } finally {
         setLoading(false);
       }
     },
-    [wallet, connection, refreshGlobalState, runTx]
+    [wallet, connection, refreshGlobalState]
   );
 
   // ------------------------------------------------------------
   // Expose API
   // ------------------------------------------------------------
-  return {
-    loading,
-    togglePause,
-    fetchWager,
-    setBurnVault,
-    setResolver,
-    setDistributionBps,
-    setReferralDistributionRatios,
-    setAdmin,
-    emergencyWithdraw,
-  };
+  return useMemo(
+    () => ({
+      loading,
+      togglePause,
+      fetchWager,
+      setBurnVault,
+      setResolver,
+      setDistributionBps,
+      setReferralDistributionRatios,
+      setAdmin,
+      emergencyWithdraw,
+    }),
+    [
+      loading,
+      togglePause,
+      fetchWager,
+      setBurnVault,
+      setResolver,
+      setDistributionBps,
+      setReferralDistributionRatios,
+      setAdmin,
+      emergencyWithdraw,
+    ],
+  );
 }
