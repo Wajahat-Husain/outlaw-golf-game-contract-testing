@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import solanaLogo from "../../assets/solana-logo.svg";
 import WalletConnector from "../wallet/WalletConnector";
+/* global __APP_VERSION__ */
 
 export default function Header() {
   return (
@@ -28,6 +29,9 @@ export default function Header() {
         </h1>
         <p className="text-sm sm:text-base text-zinc-500 max-w-md mx-auto font-medium leading-relaxed">
           On-chain wagers, escrow, and settlement — connect your wallet to play.
+        </p>
+        <p className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500/80">
+          Version {__APP_VERSION__}
         </p>
       </motion.div>
       <WalletConnector />

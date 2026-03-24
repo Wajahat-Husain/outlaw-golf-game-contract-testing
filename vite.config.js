@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import { NodeGlobalsPolyfillPlugin } from "@esbuild-plugins/node-globals-polyfill";
 import { fileURLToPath } from "url";
 import { dirname, resolve } from "path";
+import packageJson from "./package.json";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -29,6 +30,7 @@ export default defineConfig({
   define: {
     global: "globalThis",
     "process.env": {},
+    __APP_VERSION__: JSON.stringify(packageJson.version),
   },
 
   optimizeDeps: {

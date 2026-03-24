@@ -53,7 +53,7 @@ export default function useWager(wallet, connection, refreshGlobalState) {
   // ------------------------------------------------------------
   const fetchActiveWagersForWallet = useCallback(
     async () => {
-      if (!wallet.publicKey) throw new Error("Wallet not connected");
+      if (!wallet.publicKey) return [];
       setLoading(true);
 
       try {
@@ -80,7 +80,7 @@ export default function useWager(wallet, connection, refreshGlobalState) {
         return active; // array of { publicKey, account }
       } catch (error) {
         console.error("error fetching active wagers for wallet", error);
-        throw error;
+        return [];
       } finally {
         setLoading(false);
       }
