@@ -14,6 +14,25 @@ export const parseTokenAmount = (
   return Math.floor(parseFloat(amount) * 10 ** decimals);
 };
 
+export const parseTokenAmountExact = (
+  amount,
+  decimals = TOKEN_DECIMALS_NUM,
+) => {
+  const normalized = String(amount ?? "").trim();
+  if (!/^\d+(\.\d+)?$/.test(normalized)) {
+    throw new Error("Invalid token amount format.");
+  }
+
+  const [wholePart, fractionalPart = ""] = normalized.split(".");
+  if (fractionalPart.length > decimals) {
+    throw new Error(`Amount supports up to ${decimals} decimal places.`);
+  }
+
+  const paddedFraction = fractionalPart.padEnd(decimals, "0");
+  const baseUnits = `${wholePart}${paddedFraction}`.replace(/^0+/, "") || "0";
+  return baseUnits;
+};
+
 export const formatPublicKey = (publicKey, startChars = 4, endChars = 4) => {
   const address = publicKey.toString();
   return `${address.slice(0, startChars)}...${address.slice(-endChars)}`;

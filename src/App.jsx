@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { useConnection, useWallet } from "@solana/wallet-adapter-react";
+import { useConnection } from "@solana/wallet-adapter-react";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { PublicKey, SystemProgram } from "@solana/web3.js";
@@ -8,15 +8,17 @@ import { motion } from "framer-motion";
 import Layout from "./components/layout/Layout";
 import { findGlobalStatePda } from "./services/solana/pda.service";
 import { initializeOutlawGolfProgram } from "./utils/anchorProgram";
-import { parseTokenAmount } from "./utils/formatters";
+import { TOKEN_DECIMALS_NUM } from "./utils/constants";
+import { parseTokenAmountExact } from "./utils/formatters";
 import useWager from "./hooks/useWager";
 import useAdmin from "./hooks/useAdmin";
+import useUnifiedWallet from "./hooks/useUnifiedWallet";
 import { DashboardProvider } from "./contexts/DashboardContext";
 import ConnectedDashboard from "./components/dashboard/ConnectedDashboard";
 
 export default function App() {
   const { connection } = useConnection();
-  const wallet = useWallet();
+  const wallet = useUnifiedWallet();
 
   const [isLoading, setIsLoading] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
@@ -45,6 +47,8 @@ export default function App() {
 
   const [isAdmin, setIsAdmin] = useState(false);
   const [isResolver, setIsResolver] = useState(false);
+
+  const walletPublicKey = wallet.publicKey;
 
   const fetchGlobalState = useCallback(async () => {
     if (!wallet.publicKey) return;
@@ -105,9 +109,17 @@ export default function App() {
           errors[field] = "Required";
         else delete errors[field];
       } else if (field === "wagerAmount") {
-        if (!value || isNaN(Number(value)) || Number(value) <= 0)
+        if (!value || isNaN(Number(value)) || Number(value) <= 0) {
           errors[field] = "Enter positive number";
-        else delete errors[field];
+        } else {
+          const amountText = String(value).trim();
+          const [, fractional = ""] = amountText.split(".");
+          if (fractional.length > TOKEN_DECIMALS_NUM) {
+            errors[field] = `Max ${TOKEN_DECIMALS_NUM} decimal places`;
+          } else {
+            delete errors[field];
+          }
+        }
       } else {
         if (!value) errors[field] = "Required";
         else delete errors[field];
@@ -117,7 +129,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (wallet.publicKey) {
+    if (walletPublicKey) {
       fetchGlobalState();
     } else {
       setIsInitialized(false);
@@ -125,10 +137,10 @@ export default function App() {
       setIsAdmin(false);
       setIsResolver(false);
     }
-  }, [wallet.publicKey, fetchGlobalState]);
+  }, [walletPublicKey, fetchGlobalState]);
 
   useEffect(() => {
-    if (!wallet.publicKey) {
+    if (!walletPublicKey) {
       setMyActiveWagers([]);
       return;
     }
@@ -141,7 +153,7 @@ export default function App() {
         console.error("Failed to load active wagers for wallet", err);
       }
     })();
-  }, [wallet.publicKey, wager]);
+  }, [walletPublicKey, wager]);
 
   useEffect(() => {
     if (activeTab === "admin" && !isAdmin) setActiveTab("user");
@@ -186,9 +198,16 @@ export default function App() {
     }
     let amountBn;
     try {
-      amountBn = new anchor.BN(parseTokenAmount(wagerAmount));
+      const parsedAmount = parseTokenAmountExact(wagerAmount);
+      amountBn = new anchor.BN(parsedAmount);
+      if (amountBn.lte(new anchor.BN(0))) {
+        toast.error("Wager amount must be greater than 0.");
+        return;
+      }
     } catch {
-      toast.error("Invalid amount");
+      toast.error(
+        `Invalid amount. Use up to ${TOKEN_DECIMALS_NUM} decimal places and a value greater than 0.`,
+      );
       return;
     }
     try {
@@ -198,6 +217,7 @@ export default function App() {
       setWagerId("");
       setWagerAmount("");
     } catch (err) {
+      console.error("Failed to create wager", err);
       toast.error(err.message || "Failed to create wager");
     } finally {
       setIsLoading(false);

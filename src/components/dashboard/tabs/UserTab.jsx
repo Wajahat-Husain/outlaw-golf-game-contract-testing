@@ -5,8 +5,12 @@ import {
   formatWagerStatus,
   formatTimestamp,
 } from "../../../utils/formatters";
+import { TOKEN_DECIMALS_NUM } from "../../../utils/constants";
 
 export default function UserTab() {
+  const amountStep =
+    TOKEN_DECIMALS_NUM > 0 ? `0.${"0".repeat(TOKEN_DECIMALS_NUM - 1)}1` : "1";
+
   const {
     wallet,
     isLoading,
@@ -226,7 +230,7 @@ export default function UserTab() {
             <label className="input-label">Amount (OUTLAW)</label>
             <input
               type="number"
-              step="0.000000001"
+              step={amountStep}
               placeholder="Enter wager amount"
               value={wagerAmount}
               onChange={(e) => {

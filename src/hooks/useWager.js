@@ -124,6 +124,7 @@ export default function useWager(wallet, connection, refreshGlobalState) {
           true,
         );
 
+        console.log("amountBn", amountBn.toString());
         const ix = await program.methods
           .createWager(wagerBn, amountBn)
           .accounts({
